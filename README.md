@@ -11,6 +11,7 @@ sudo apt install zenity                 # 只在需要图形界面时安装
 ./ubuntu-mode-switcher.sh                # 有桌面时打开图形菜单，否则打开终端菜单
 ./ub                                    # 快捷菜单入口
 ./ubuntu-mode-switcher.sh --status       # 查看状态
+./ubuntu-mode-switcher.sh --update       # 检查并更新脚本
 sudo ./ubuntu-mode-switcher.sh --server --now
 ```
 
@@ -32,16 +33,19 @@ ub
 
 ## 安装 `ub` 快捷命令
 
-如果希望在任意目录直接输入 `ub`，把两个脚本放到同一个 PATH 目录：
+如果希望在任意目录直接输入 `ub`，建议让 PATH 中的入口指向 Git 仓库，这样菜单里的更新功能才能更新当前正在使用的脚本：
 
 ```bash
 mkdir -p "$HOME/.local/bin"
-cp ubuntu-mode-switcher.sh ub "$HOME/.local/bin/"
-chmod +x "$HOME/.local/bin/ubuntu-mode-switcher.sh" "$HOME/.local/bin/ub"
+chmod +x "$HOME/ub/ubuntu-mode-switcher.sh" "$HOME/ub/ub"
+ln -sfn "$HOME/ub/ubuntu-mode-switcher.sh" "$HOME/.local/bin/ubuntu-mode-switcher.sh"
+ln -sfn "$HOME/ub/ub" "$HOME/.local/bin/ub"
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-然后执行 `ub` 即可打开快捷菜单。将 PATH 配置加入 `~/.bashrc` 后，重新登录仍然有效。
+然后执行 `ub` 即可打开快捷菜单。将 PATH 配置加入 `~/.bashrc` 后，重新登录仍然有效。若之前把副本安装到了 `/usr/local/bin`，请先移除或替换旧副本，避免执行到旧版本。
+
+更新功能只接受 `git pull --ff-only`，发现本地未提交修改时会停止更新，不会覆盖本地文件。
 
 ## 常用回滚命令
 

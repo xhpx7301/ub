@@ -8,12 +8,13 @@ APP_NAME="Ubuntu 模式切换"
 DESKTOP_TARGET="graphical.target"
 SERVER_TARGET="multi-user.target"
 GUI_MODE=false
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
     cat <<'EOF'
 用法:
   ubuntu-mode-switcher.sh                 打开图形界面（需要 Zenity）
-  ubuntu-mode-switcher.sh --status        显示当前和默认启动模式
+  ubuntu-mode-switcher.sh --status        显示当前和重启后默认模式
   ubuntu-mode-switcher.sh --desktop --now 设置桌面模式并立即切换（会结束图形会话）
   ubuntu-mode-switcher.sh --server --now  设置服务器模式并立即切换（会结束图形会话）
   ubuntu-mode-switcher.sh --reboot        重启电脑
@@ -100,7 +101,7 @@ print_status() {
     default=$(get_default_target)
     active=$(get_active_target)
     printf '当前运行模式: %s\n' "$(target_label "$active")"
-    printf '下次启动模式: %s\n' "$(target_label "$default")"
+    printf '重启后默认模式: %s\n' "$(target_label "$default")"
 }
 
 # Optional hooks for machine-specific services. They are intentionally empty so
@@ -121,9 +122,9 @@ apply_mode() {
     current=$(get_default_target)
     if [[ "$current" != "$target" ]]; then
         run_privileged systemctl set-default "$target"
-        printf '已设置下次启动为: %s\n' "$label"
+        printf '已设定重启后默认模式: %s\n' "$label"
     else
-        printf '下次启动已经是: %s\n' "$label"
+        printf '重启后默认模式已经是: %s\n' "$label"
     fi
 
     if [[ "$mode" == desktop ]]; then desktop_enter_hook; else server_enter_hook; fi
@@ -132,13 +133,50 @@ apply_mode() {
         printf '正在立即切换到 %s；当前图形会话可能会结束。\n' "$label"
         run_privileged systemctl isolate "$target"
     else
-        printf '当前会话未改变。需要重启后生效。\n'
+        printf '当前会话未改变。\n'
     fi
 }
 
 reboot_system() {
     require_systemd
     run_privileged systemctl reboot
+}
+
+confirm_update() {
+    if [[ "$GUI_MODE" == true ]]; then
+        zenity --question --title="$APP_NAME" --width=520 \
+            --text="$1" --ok-label='更新' --cancel-label='取消'
+    else
+        confirm_terminal "$1"
+    fi
+}
+
+update_script() {
+    command_exists git || die '未安装 Git。可运行: sudo apt install git'
+    local repo upstream status commits
+    repo=$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null) \
+        || die "脚本目录不是 Git 仓库，无法自动更新。请从 Git 仓库目录运行 ub。"
+
+    status=$(git -C "$repo" status --porcelain --untracked-files=normal)
+    [[ -z "$status" ]] || die "Git 仓库存在未提交修改，已停止更新。请先处理:\n$status"
+
+    printf '正在检查更新...\n'
+    git -C "$repo" fetch --prune origin
+    upstream=$(git -C "$repo" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null) \
+        || die '当前分支没有远程跟踪分支，无法自动更新。'
+    commits=$(git -C "$repo" log --oneline "HEAD..$upstream")
+    if [[ -z "$commits" ]]; then
+        printf '当前已经是最新版本。\n'
+        return 0
+    fi
+
+    printf '可更新内容:\n%s\n' "$commits"
+    confirm_update '发现新版本，确认更新脚本？' || {
+        printf '已取消更新。\n'
+        return 0
+    }
+    git -C "$repo" pull --ff-only
+    printf '更新完成。下次执行 ub 时生效。\n'
 }
 
 pause_terminal() {
@@ -164,14 +202,15 @@ terminal_menu() {
         active=$(get_active_target)
         printf '\n=== %s ===\n' "$APP_NAME"
         printf '当前运行: %s\n' "$(target_label "$active")"
-        printf '默认启动: %s\n\n' "$(target_label "$default")"
+        printf '重启后默认模式: %s\n\n' "$(target_label "$default")"
         printf '%s\n' \
             '1) 立即切换到桌面模式' \
             '2) 立即切换到服务器模式' \
             '3) 重启电脑' \
             '4) 查看详细状态' \
+            '5) 检查并更新脚本' \
             '0) 退出'
-        if ! read -r -p '请选择操作 [0-4]: ' choice; then
+        if ! read -r -p '请选择操作 [0-5]: ' choice; then
             printf '\n'
             return 0
         fi
@@ -194,6 +233,7 @@ terminal_menu() {
                 fi
                 ;;
             4) print_status; pause_terminal ;;
+            5) update_script; pause_terminal ;;
             0) return 0 ;;
             *) printf '无效选择，请重试。\n' ;;
         esac
@@ -214,12 +254,13 @@ gui() {
         default=$(get_default_target)
         active=$(get_active_target)
         choice=$(zenity --list --title="$APP_NAME" --width=620 --height=390 \
-            --text="当前运行: $(target_label "$active")\n默认启动: $(target_label "$default")\n\n选择要执行的操作" \
+            --text="当前运行: $(target_label "$active")\n重启后默认模式: $(target_label "$default")\n\n选择要执行的操作" \
             --column='操作' --column='说明' \
             'desktop' '立即切换到桌面模式' \
             'server' '立即切换到服务器模式' \
             'reboot' '重启电脑' \
             'status' '查看详细状态' \
+            'update' '检查并更新脚本' \
             'exit' '退出' \
             --print-column=1 --hide-column=1 --ok-label='执行' --cancel-label='退出') || return 0
 
@@ -234,6 +275,8 @@ gui() {
                 reboot_system; return 0 ;;
             status)
                 print_status | zenity --text-info --title="$APP_NAME - 状态" --width=520 --height=220 --ok-label='关闭' || true ;;
+            update)
+                update_script | zenity --text-info --title="$APP_NAME - 更新" --width=620 --height=320 --ok-label='关闭' || true ;;
             exit) return 0 ;;
         esac
     done
@@ -251,7 +294,7 @@ main() {
             --menu)
                 [[ -z "$mode" && -z "$action" ]] || die "--menu 不能和其他操作同时使用。"
                 action=menu ;;
-            --status|--reboot)
+            --status|--reboot|--update)
                 [[ -z "$mode" && -z "$action" ]] || die "$1 不能和模式或其他操作同时使用。"
                 action="${1#--}" ;;
             -h|--help) usage; return ;;
@@ -265,6 +308,7 @@ main() {
     case "$action" in
         status) print_status ;;
         reboot) reboot_system ;;
+        update) update_script ;;
         menu) terminal_menu ;;
         '')
             if [[ -n "$mode" ]]; then
