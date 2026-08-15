@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+exec "$SCRIPT_DIR/ubuntu-mode-switcher.sh" "$@"

@@ -6,17 +6,42 @@
 
 ```bash
 chmod +x ubuntu-mode-switcher.sh
+chmod +x ub
 sudo apt install zenity                 # 只在需要图形界面时安装
-./ubuntu-mode-switcher.sh                # 打开图形菜单
+./ubuntu-mode-switcher.sh                # 有桌面时打开图形菜单，否则打开终端菜单
+./ub                                    # 快捷菜单入口
 ./ubuntu-mode-switcher.sh --status       # 查看状态
-./ubuntu-mode-switcher.sh --server       # 设置下次启动为服务器模式
-./ubuntu-mode-switcher.sh --desktop      # 设置下次启动为桌面模式
 sudo ./ubuntu-mode-switcher.sh --server --now
 ```
 
-普通用户运行时，脚本会通过 `sudo` 请求权限。默认操作只执行 `systemctl set-default`，当前桌面会话保持不变；带 `--now` 才会执行 `systemctl isolate`，这可能关闭当前图形会话。服务器模式下重启即可让电脑不启动桌面显示管理器，从而减少内存和功耗。
+普通用户从终端运行时，脚本会通过 `sudo` 请求权限；从 Zenity 图形界面运行时，则优先弹出系统的 PolicyKit 授权窗口。桌面/服务器菜单操作会立即执行 `systemctl isolate`，并同步设置默认启动目标，使重启后继续保持所选模式。立即切换可能关闭当前图形会话。
 
-脚本不会猜测或停止 Emby 服务。若你的旧方案还需要切换特定服务，请在脚本中的 `desktop_enter_hook` 和 `server_enter_hook` 函数里加入对应的 `systemctl` 命令。
+脚本不会猜测或停止 Emby 服务。若你的旧方案还需要切换特定服务，请在脚本中的 `desktop_enter_hook` 和 `server_enter_hook` 函数里加入对应的命令；需要权限时请用 `run_privileged systemctl ...`。
+
+## 服务器模式下切换回桌面
+
+服务器模式没有图形界面时，可以通过 SSH 登录笔记本执行：
+
+```bash
+ssh 用户名@笔记本IP
+ub
+# 选择 1：立即切换到桌面模式
+```
+
+终端菜单中的切换和重启操作使用 `[Y/n]`：直接回车或输入 `y` 执行，输入 `n` 取消。
+
+## 安装 `ub` 快捷命令
+
+如果希望在任意目录直接输入 `ub`，把两个脚本放到同一个 PATH 目录：
+
+```bash
+mkdir -p "$HOME/.local/bin"
+cp ubuntu-mode-switcher.sh ub "$HOME/.local/bin/"
+chmod +x "$HOME/.local/bin/ubuntu-mode-switcher.sh" "$HOME/.local/bin/ub"
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+然后执行 `ub` 即可打开快捷菜单。将 PATH 配置加入 `~/.bashrc` 后，重新登录仍然有效。
 
 ## 常用回滚命令
 
